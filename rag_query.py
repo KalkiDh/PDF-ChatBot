@@ -1,57 +1,97 @@
 import os
+import time
+import logging
 from pathlib import Path
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import RunnablePassthrough, RunnableLambda
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from langchain_chroma import Chroma
 import vector_utils
 from dotenv import load_dotenv
 from azure.ai.inference import ChatCompletionsClient
-from azure.ai.inference.models import SystemMessage, UserMessage
 from azure.core.credentials import AzureKeyCredential
 
-def initialize_llm():
-    load_dotenv()
-    token = os.getenv("GITHUB_TOKEN")
-    if not token:
-        raise ValueError("GITHUB_TOKEN not found in .env file")
-    endpoint = "https://models.github.ai/inference"
-    model = "xai/grok-3"
-    client = ChatCompletionsClient(
-        endpoint=endpoint,
-        credential=AzureKeyCredential(token),
-    )
-    return client
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
-def create_rag_chain(vector_store, llm):
-    prompt_template = ChatPromptTemplate.from_messages([
-        ("system", "You are an assistant that answers questions based on provided context. Use the following context to answer the question concisely in about 100 words:\n\n{context}"),
-        ("user", "{question}")
-    ])
-    retriever = vector_store.as_retriever(search_kwargs={"k": 3})
-    def invoke_llm(inputs):
+class RAGChatClient:
+    def __init__(self, persist_directory):
+        load_dotenv()
+        self.token = os.getenv("GITHUB_TOKEN")
+        if not self.token:
+            raise ValueError("Missing GITHUB_TOKEN in .env")
+        
+        self.client = ChatCompletionsClient(
+            endpoint="https://models.github.ai/inference",
+            credential=AzureKeyCredential(self.token)
+        )
+        self.model = "xai/grok-3"
+        self.conversation_history = []
+        self.vector_store = Chroma(
+            persist_directory=persist_directory,
+            embedding_function=vector_utils.generate_embeddings()
+        )
+        logger.info(f"Vector store loaded from {persist_directory}")
+
+    def _retrieve_context(self, query):
+        """Retrieve relevant document chunks"""
+        retriever = self.vector_store.as_retriever(search_kwargs={"k": 3})
+        docs = retriever.invoke(query)
+        logger.info(f"Retrieved {len(docs)} document chunks for query: {query}")
+        return docs
+
+    def get_response(self, user_query):
+        start_time = time.time()
+        
+        # Retrieve context
+        context_docs = self._retrieve_context(user_query)
+        if not context_docs:
+            response = "No relevant information found in the document."
+            self._update_history(user_query, response)
+            return response
+        
+        context = "\n\n".join(doc.page_content for doc in context_docs)
+        
+        # Build message sequence
         messages = [
-            SystemMessage(content=inputs.messages[0].content),
-            UserMessage(content=inputs.messages[1].content)
+            {"role": "system", "content": f"You are an assistant that answers questions based solely on the provided document context. Answer the user's query concisely in the exact format requested (e.g., 50-word summary). Do not assume or answer a different question. Context:\n\n{context}"},
+            *self._format_history(),
+            {"role": "user", "content": user_query}
         ]
-        response = llm.complete(
+        
+        # Log full prompt
+        prompt_log = "\n".join([f"{msg['role']}: {msg['content']}" for msg in messages])
+        logger.debug(f"Full prompt sent to model:\n{prompt_log}")
+        
+        # Get LLM response
+        response_obj = self.client.complete(
             messages=messages,
             temperature=0.7,
             top_p=0.9,
-            model="xai/grok-3"
+            model=self.model
         )
-        return response.choices[0].message.content
-    chain = (
-        {
-            "context": retriever | (lambda docs: "\n\n".join(doc.page_content for doc in docs)),
-            "question": RunnablePassthrough()
-        }
-        | prompt_template
-        | RunnableLambda(invoke_llm)
-    )
-    return chain
+        
+        response_content = response_obj.choices[0].message.content
+        self._update_history(user_query, response_content)
+        
+        logger.info(f"Response time: {time.time()-start_time:.1f}s")
+        return response_content
+
+    def _format_history(self):
+        """Convert LangChain messages to Azure format"""
+        return [
+            {"role": "assistant" if isinstance(msg, AIMessage) else "user", "content": msg.content}
+            for msg in self.conversation_history[-4:]
+        ]
+
+    def _update_history(self, user_query, response):
+        """Store history in LangChain format"""
+        self.conversation_history.extend([
+            HumanMessage(content=user_query),
+            AIMessage(content=response)
+        ])
 
 def main():
-    doc_path = input("Please enter the path to your PDF file: ").strip().strip('"\'')
+    doc_path = input("PDF path: ").strip().strip('"\'')
     doc_path = os.path.normpath(doc_path)
     
     if not Path(doc_path).exists():
@@ -61,52 +101,31 @@ def main():
         print(f"Error: File '{doc_path}' is not a PDF.")
         return
     
-    pdf_filename = os.path.basename(doc_path)
-    pdf_name = os.path.splitext(pdf_filename)[0]
-    persist_directory = f"./chroma_db_{pdf_name}"
+    pdf_name = Path(doc_path).stem
+    persist_dir = f"./chroma_db_{pdf_name}"
     
-    embeddings = vector_utils.generate_embeddings()
+    if not Path(persist_dir).exists():
+        print("Indexing document...")
+        docs = vector_utils.load_document(doc_path)
+        chunks = vector_utils.split_document(docs)
+        vector_utils.store_in_chromadb(
+            chunks,
+            vector_utils.generate_embeddings(),
+            persist_dir
+        )
+        logger.info(f"Vector store created at {persist_dir}")
     
-    if os.path.exists(persist_directory):
-        print(f"Loading existing vector store from {persist_directory}...")
-        try:
-            vector_store = Chroma(persist_directory=persist_directory, embedding_function=embeddings)
-        except Exception as e:
-            print(f"Error loading vector store: {e}")
-            return
-    else:
-        print(f"Processing document: {doc_path}...")
-        try:
-            documents = vector_utils.load_document(doc_path)
-            chunks = vector_utils.split_document(documents)
-            vector_store = vector_utils.store_in_chromadb(chunks, embeddings, persist_directory)
-            print("Document processed and embeddings stored successfully!")
-        except Exception as e:
-            print(f"Error processing document: {e}")
-            return
+    client = RAGChatClient(persist_dir)
     
-    print("Initializing text generation model...")
-    try:
-        llm = initialize_llm()
-    except Exception as e:
-        print(f"Error initializing LLM: {e}")
-        return
+    print("Ask questions (type 'exit' to quit):")
     
-    print("Creating RAG chain...")
-    chain = create_rag_chain(vector_store, llm)
-    
-    query = input("Please enter your query about the document: ").strip()
-    if not query:
-        print("Error: Query cannot be empty!")
-        return
-    
-    print("\nProcessing query...")
-    try:
-        result = chain.invoke(query)
-        print(f"\nQuery: {query}")
-        print(f"Response: {result}")
-    except Exception as e:
-        print(f"Error processing query: {e}")
+    while (query := input("\nYou: ").strip().lower()) not in ('exit', 'quit'):
+        if not query:
+            print("Error: Query cannot be empty!")
+            continue
+        
+        response = client.get_response(query)
+        print(f"\nAssistant: {response}")
 
 if __name__ == "__main__":
     main()
