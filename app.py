@@ -1,4 +1,5 @@
 import os
+import shutil
 from fastapi import FastAPI, HTTPException, UploadFile, File, Request, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -160,6 +161,26 @@ def startup_event():
             logger.info(f"Initialized RAG client for {pdf_name}")
         except Exception as e:
             logger.error(f"Error initializing RAG client for {pdf_name}: {str(e)}")
+
+@app.on_event("shutdown")
+def shutdown_event():
+    """Delete all uploaded PDFs and vector stores on server shutdown"""
+    # Delete uploads directory
+    uploads_dir = Path("./uploads")
+    if uploads_dir.exists():
+        try:
+            shutil.rmtree(uploads_dir)
+            logger.info(f"Deleted uploads directory: {uploads_dir}")
+        except Exception as e:
+            logger.error(f"Error deleting uploads directory: {str(e)}")
+    
+    # Delete all vector stores
+    for persist_dir in Path("./").glob("chroma_db_*"):
+        try:
+            shutil.rmtree(persist_dir)
+            logger.info(f"Deleted vector store: {persist_dir}")
+        except Exception as e:
+            logger.error(f"Error deleting vector store {persist_dir}: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
