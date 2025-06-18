@@ -1,70 +1,44 @@
-import os
-import torch
-from langchain_community.document_loaders import UnstructuredFileLoader
+from langchain_unstructured import UnstructuredLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_community.vectorstores import Chroma
-from pathlib import Path
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_chroma import Chroma
+from langchain_community.vectorstores.utils import filter_complex_metadata
 
 def load_document(doc_path):
-    loader = UnstructuredFileLoader(doc_path)
-    documents = loader.load()
-    return documents
+    """Load a document from the specified path."""
+    try:
+        loader = UnstructuredLoader(doc_path)
+        documents = loader.load()
+        return documents
+    except Exception as e:
+        raise Exception(f"Error loading document: {str(e)}")
 
-def split_document(documents):
+def split_document(documents, chunk_size=1000, chunk_overlap=200):
+    """Split documents into chunks."""
     text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,
-        chunk_overlap=200,
-        length_function=len,
-        add_start_index=True
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap
     )
     chunks = text_splitter.split_documents(documents)
     return chunks
 
 def generate_embeddings():
-    model_name = "sentence-transformers/all-MiniLM-L6-v2"
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    embeddings = HuggingFaceEmbeddings(
-        model_name=model_name,
-        model_kwargs={'device': device}
-    )
-    return embeddings
+    """Generate embeddings using HuggingFace model."""
+    try:
+        embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+        return embeddings
+    except Exception as e:
+        raise Exception(f"Error generating embeddings: {str(e)}")
 
 def store_in_chromadb(chunks, embeddings, persist_directory):
-    os.makedirs(persist_directory, exist_ok=True)
-    vector_store = Chroma.from_documents(
-        documents=chunks,
-        embedding=embeddings,
-        persist_directory=persist_directory
-    )
-    return vector_store
-
-def main():
-    doc_path = input("Please enter the path to your PDF file: ").strip()
-    pdf_filename = os.path.basename(doc_path)
-    pdf_name = os.path.splitext(pdf_filename)[0]
-    persist_directory = f"./chroma_db_{pdf_name}"
-    
-    if not Path(doc_path).exists():
-        print(f"Document {doc_path} not found!")
-        return
-    if not doc_path.lower().endswith('.pdf'):
-        print("Please provide a valid PDF file!")
-        return
-    
-    print("Loading document...")
-    documents = load_document(doc_path)
-    
-    print("Splitting document into chunks...")
-    chunks = split_document(documents)
-    print(f"Generated {len(chunks)} chunks")
-    
-    print("Generating embeddings...")
-    embeddings = generate_embeddings()
-    
-    print("Storing embeddings in ChromaDB...")
-    vector_store = store_in_chromadb(chunks, embeddings, persist_directory)
-    print("Embeddings stored successfully!")
-
-if __name__ == "__main__":
-    main()
+    """Store document chunks in ChromaDB with filtered metadata."""
+    try:
+        # Filter complex metadata
+        filtered_chunks = filter_complex_metadata(chunks)
+        Chroma.from_documents(
+            documents=filtered_chunks,
+            embedding=embeddings,
+            persist_directory=persist_directory
+        )
+    except Exception as e:
+        raise Exception(f"Error storing in ChromaDB: {str(e)}")
