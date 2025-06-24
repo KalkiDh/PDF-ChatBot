@@ -26,15 +26,35 @@ Listing indexed PDFs
 ## 🧪 Sample Screenshot
 
 ##Uploading a file
+
+
 <img src="images/upload ss.png" alt="Example Image" width="500"/>
+
+
 ##Option to select file
+
+
 <img src="images/PDF dropdown.png" alt="Example Image" width="500"/>
+
+
 ##Context Understanding feature
+
+
 <img src="images/Context Understanding.png" alt="Example Image" width="500"/>
+
+
 ##Response
+
+
 <img src="images/Response.png" alt="Example Image" width="500"/>
+
+
 ##Work with multiple documents
+
+
 <img src="images/Multiple document capacity.png" alt="Example Image" width="500"/>
+
+
 
 
 🏗️ Project Structure
