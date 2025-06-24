@@ -1,104 +1,157 @@
-RAG Chatbot API
-A Retrieval-Augmented Generation (RAG) chatbot API built with FastAPI, LangChain, ChromaDB, and Azure AI for processing and querying PDF documents.
-Overview
-This project implements a conversational chatbot that:
+📄 Azure-Powered RAG Chatbot
+A Retrieval-Augmented Generation (RAG) chatbot application powered by Azure AI, capable of answering queries based on the contents of uploaded PDF documents. It supports both command-line and REST API interfaces.
 
-Processes uploaded PDF documents
-Generates embeddings using Azure AI's text-embedding model
-Stores document chunks in ChromaDB for vector-based retrieval
-Provides a RESTful API for multi-turn conversations
-Supports querying specific PDFs and retrieving conversation history
+🚀 Features
+🔍 Index and embed PDF documents using Azure AI Embeddings API.
 
-Features
+🧠 Ask contextual questions using Chroma vector store and Grok-3 model.
 
-PDF Processing: Upload and index PDF files for content retrieval
-Vector Search: Uses ChromaDB for efficient similarity search
-Conversational AI: Powered by Azure AI's chat completions model (Grok-3)
-API Endpoints:
-Upload PDFs (/upload-pdf)
-Query documents (/query)
-Retrieve conversation history (/history)
-List indexed PDFs (/list-pdfs)
+🗂️ Persistent vector storage per PDF file.
 
+🧵 Multi-turn conversational history.
 
-Error Handling: Robust logging and validation
-CORS Support: Configured for cross-origin requests
+🌐 REST API (FastAPI) with support for:
 
-Tech Stack
+Uploading PDFs
 
-Backend: FastAPI (Python)
-Document Processing: LangChain, UnstructuredLoader
-Vector Store: ChromaDB
-Embeddings & LLM: Azure AI (text-embedding-3-small, Grok-3)
-Environment Management: python-dotenv
-Logging: Python logging
-Validation: Pydantic
+Querying documents
 
-Prerequisites
+Viewing conversation history
 
-Python 3.8+
-Azure AI account with API credentials
-GitHub token (used as Azure authentication)
-Required Python packages:pip install fastapi uvicorn langchain langchain-unstructured langchain-chroma azure-ai-inference python-dotenv pydantic
+Listing indexed PDFs
+
+🛡️ Input validation and error handling
 
 
+## 🧪 Sample Screenshot
 
-Setup
+##Uploading a file
+<img src="images/upload ss.png" alt="Example Image" width="500"/>
+##Option to select file
+<img src="images/PDF dropdown.png" alt="Example Image" width="500"/>
+##Context Understanding feature
+<img src="images/Context Understanding.png" alt="Example Image" width="500"/>
+##Response
+<img src="images/Response.png" alt="Example Image" width="500"/>
+##Work with multiple documents
+<img src="images/Multiple document capacity.png" alt="Example Image" width="500"/>
 
-Clone the repository:
-git clone <repository-url>
-cd <repository-directory>
+
+🏗️ Project Structure
 
 
-Install dependencies:
+.
+├── main.py                # CLI chatbot interface
+├── rag_query.py           # Core RAG chatbot logic
+├── vector_utils.py        # Document loading, splitting, and embedding
+├── api_server.py          # FastAPI-based web API
+├── .env                   # Environment variables (not committed)
+└── README.md              # This file
+
+
+
+
+
+🔧 Setup Instructions
+1. 🧱 Prerequisites
+Python 3.9+
+
+An Azure AI account with:
+
+EmbeddingsClient endpoint + model (e.g., text-embedding-3-small)
+
+ChatCompletionsClient endpoint + model (e.g., xai/grok-3)
+
+A valid Azure API key
+
+2. 📦 Install Dependencies
+
 pip install -r requirements.txt
 
 
-Set up environment variables:Create a .env file in the project root directory:
-GITHUB_TOKEN=your_azure_ai_token
+
+Make sure your requirements.txt includes:
+
+langchain
+langchain-community
+langchain-core
+langchain-chroma
+unstructured
+chromadb
+azure-ai-inference
+python-dotenv
+fastapi
+uvicorn
+pydantic
 
 
-Run the API:
-uvicorn main:app --host 0.0.0.0 --port 8000
 
+3. 🔐 Environment Variables
+Create a .env file in the root directory:
 
+ini
+Copy
+Edit
+GITHUB_TOKEN=your_azure_api_key_here
+🧪 Running the Application
+📥 Upload & Chat (CLI Mode)
+bash
+Copy
+Edit
+python main.py
+You'll be prompted to enter the path to a PDF file.
 
-Project Structure
-├── vector_utils.py    # Document loading, embedding, and ChromaDB storage
-├── rag_query.py       # RAG client logic for querying and conversation history
-├── api.py             # FastAPI application with API endpoints
-├── uploads/           # Directory for uploaded PDFs (auto-created)
-├── chroma_db_*/       # ChromaDB vector stores (auto-created per PDF)
-├── .env               # Environment variables
-└── README.md          # Project documentation
+Once indexed, you can start chatting with the assistant.
 
-API Usage
-1. Upload a PDF
-curl -X POST -F "file=@/path/to/document.pdf" http://localhost:8000/upload-pdf
+Type exit or quit to stop.
 
-2. Query a PDF
-curl -X POST -H "Content-Type: application/json" -d '{"query":"Summarize this file","pdf_name":"document"}' http://localhost:8000/query
+🌐 Start API Server
+bash
+Copy
+Edit
+uvicorn api_server:app --reload
+📤 Upload PDF
+POST /upload-pdf
 
-3. Get Conversation History
-curl -X GET "http://localhost:8000/history?pdf_name=document"
+Upload a .pdf file for indexing.
 
-4. List Indexed PDFs
-curl -X GET http://localhost:8000/list-pdfs
+🧾 Ask a Question
+POST /query
 
-Notes
+json
+Copy
+Edit
+{
+  "query": "What is the main idea of the document?",
+  "pdf_name": "example_pdf"
+}
+📚 Get History
+GET /history?pdf_name=example_pdf
 
-PDFs are stored in ./uploads and vector stores in ./chroma_db_* directories.
-All temporary files are deleted on server shutdown.
-Ensure your Azure AI token is valid and has access to the specified models.
-The API is configured for development with open CORS; restrict origins in production.
+📂 List PDFs
+GET /list-pdfs
 
-Contributing
+📁 Uploads & Storage
+PDFs are saved temporarily to ./uploads/.
 
-Fork the repository
-Create a feature branch (git checkout -b feature-name)
-Commit changes (git commit -m "Add feature")
-Push to the branch (git push origin feature-name)
-Open a Pull Request
+Vector stores are saved to ./chroma_db_<pdf_name>/.
 
-License
-MIT License
+On server shutdown, all uploads and vector stores are cleaned up.
+
+🧠 Powered By
+Azure AI – Embeddings and Chat models (text-embedding-3-small, xai/grok-3)
+
+LangChain – Document parsing and vector management
+
+ChromaDB – Persistent vector storage
+
+FastAPI – RESTful API server
+
+Unstructured – Robust PDF loader
+
+🛠️ Development Tips
+Use logger.debug(...) or logger.info(...) to monitor internal behavior.
+
+You can index multiple PDFs – each will have its own persistent vector DB.
+
+Fine-tune chunk sizes in split_document() for optimal results.
